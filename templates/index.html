@@ -17,25 +17,57 @@
     }
 
     header {
-      padding: 16px 24px;
+      padding: 14px 24px;
       background: #1e293b;
       border-bottom: 1px solid #334155;
       display: flex;
       align-items: center;
       justify-content: space-between;
       flex-shrink: 0;
+      gap: 12px;
     }
 
-    header h1 { font-size: 1.1rem; font-weight: 700; letter-spacing: 0.02em; }
-    header span { font-size: 0.75rem; color: #94a3b8; }
+    header h1 { font-size: 1.1rem; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap; }
 
-    .legend {
+    /* Persona selector bar */
+    .persona-bar {
       display: flex;
-      gap: 16px;
-      font-size: 0.75rem;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
     }
-    .legend-item { display: flex; align-items: center; gap: 6px; }
-    .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+    .persona-picker {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .persona-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+    }
+    .persona-label.bull { color: #4ade80; }
+    .persona-label.bear { color: #f87171; }
+
+    .persona-select {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      color: #e2e8f0;
+      font-size: 0.82rem;
+      padding: 5px 10px;
+      outline: none;
+      cursor: pointer;
+      max-width: 180px;
+    }
+    .persona-select:focus { border-color: #3b82f6; }
+
+    .persona-select.bull:focus { border-color: #4ade80; }
+    .persona-select.bear:focus { border-color: #f87171; }
 
     #chat {
       flex: 1;
@@ -53,7 +85,8 @@
       padding: 40px 20px;
     }
     .welcome h2 { font-size: 1.5rem; margin-bottom: 8px; }
-    .welcome p { color: #94a3b8; font-size: 0.9rem; max-width: 420px; margin: 0 auto; }
+    .welcome p { color: #94a3b8; font-size: 0.9rem; max-width: 440px; margin: 0 auto 4px; }
+    .welcome .hint { color: #64748b; font-size: 0.8rem; margin-top: 6px; }
     .welcome .tags {
       margin-top: 16px;
       display: flex;
@@ -93,6 +126,8 @@
     }
     @media (max-width: 600px) {
       .analyst-cards { grid-template-columns: 1fr; }
+      .persona-bar { gap: 8px; }
+      .persona-select { max-width: 140px; }
     }
 
     .analyst-card {
@@ -118,10 +153,7 @@
       white-space: pre-wrap;
     }
 
-    .typing {
-      display: flex;
-      gap: 12px;
-    }
+    .typing { display: flex; gap: 12px; }
 
     .typing-card {
       background: #1e293b;
@@ -219,14 +251,14 @@
 
 <header>
   <h1>Investment Team</h1>
-  <div class="legend">
-    <div class="legend-item">
-      <div class="legend-dot" style="background:#16a34a"></div>
-      <span>Bull</span>
+  <div class="persona-bar">
+    <div class="persona-picker">
+      <span class="persona-label bull">Bull</span>
+      <select id="bull-select" class="persona-select bull"></select>
     </div>
-    <div class="legend-item">
-      <div class="legend-dot" style="background:#dc2626"></div>
-      <span>Bear</span>
+    <div class="persona-picker">
+      <span class="persona-label bear">Bear</span>
+      <select id="bear-select" class="persona-select bear"></select>
     </div>
   </div>
 </header>
@@ -234,7 +266,8 @@
 <div id="chat">
   <div class="welcome" id="welcome">
     <h2>Your Investment Team</h2>
-    <p>Pitch any stock or investment idea. The Bull and Bear will debate it from opposite sides.</p>
+    <p>Pitch any stock or investment idea and your analysts will debate it.</p>
+    <p class="hint">Choose analyst personalities above before chatting.</p>
     <div class="tags">
       <span class="tag" onclick="prefill(this)">What do you think about NVIDIA?</span>
       <span class="tag" onclick="prefill(this)">Should I buy Apple at current prices?</span>
@@ -256,8 +289,37 @@
   const chat = document.getElementById('chat');
   const input = document.getElementById('input');
   const sendBtn = document.getElementById('send-btn');
+  const bullSelect = document.getElementById('bull-select');
+  const bearSelect = document.getElementById('bear-select');
 
-  // Auto-resize textarea
+  // ---------------------------------------------------------------------------
+  // Load presets from backend and populate dropdowns
+  // ---------------------------------------------------------------------------
+  async function loadPresets() {
+    try {
+      const res = await fetch('/presets');
+      const presets = await res.json();
+      [bullSelect, bearSelect].forEach(sel => {
+        for (const [key, p] of Object.entries(presets)) {
+          const opt = document.createElement('option');
+          opt.value = key;
+          opt.textContent = p.emoji ? `${p.emoji} ${p.label}` : p.label;
+          sel.appendChild(opt);
+        }
+      });
+      // Sensible defaults: Buffett for Bull, Burry for Bear
+      bullSelect.value = 'buffett';
+      bearSelect.value = 'burry';
+    } catch (e) {
+      console.error('Could not load presets', e);
+    }
+  }
+
+  loadPresets();
+
+  // ---------------------------------------------------------------------------
+  // Textarea auto-resize & keyboard shortcut
+  // ---------------------------------------------------------------------------
   input.addEventListener('input', () => {
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, 140) + 'px';
@@ -294,15 +356,15 @@
     return turn;
   }
 
-  function addTypingIndicator() {
+  function addTypingIndicator(bullName, bearName) {
     const el = document.createElement('div');
     el.className = 'typing';
     el.innerHTML = `
       <div class="typing-card" style="border-left-color:#16a34a">
-        🐂 Bull <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+        ${escHtml(bullName)} <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
       </div>
       <div class="typing-card" style="border-left-color:#dc2626">
-        🐻 Bear <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+        ${escHtml(bearName)} <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
       </div>`;
     chat.appendChild(el);
     scrollBottom();
@@ -316,8 +378,9 @@
       const card = document.createElement('div');
       card.className = 'analyst-card';
       card.style.borderLeftColor = r.color;
+      const headerText = r.emoji ? `${escHtml(r.emoji)} ${escHtml(r.name)}` : escHtml(r.name);
       card.innerHTML = `
-        <div class="analyst-header" style="color:${r.color}">${r.emoji} ${r.name}</div>
+        <div class="analyst-header" style="color:${r.color}">${headerText}</div>
         <div class="analyst-body">${formatText(r.text)}</div>`;
       grid.appendChild(card);
     }
@@ -326,14 +389,13 @@
   }
 
   function formatText(text) {
-    // Convert bullet-like lines into styled bullets
     return escHtml(text)
       .replace(/^[•\-\*]\s+/gm, '<span style="color:#64748b">▸</span> ')
       .replace(/\n/g, '<br>');
   }
 
   function escHtml(str) {
-    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
   function addError(msg) {
@@ -344,6 +406,14 @@
     scrollBottom();
   }
 
+  function currentPersonaLabel(sel) {
+    const opt = sel.options[sel.selectedIndex];
+    return opt ? opt.textContent : sel.value;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Send message
+  // ---------------------------------------------------------------------------
   async function sendMessage() {
     const text = input.value.trim();
     if (!text) return;
@@ -353,14 +423,20 @@
     input.style.height = 'auto';
     sendBtn.disabled = true;
 
+    const bullPreset = bullSelect.value;
+    const bearPreset = bearSelect.value;
+
     const turn = addUserBubble(text);
-    const typing = addTypingIndicator();
+    const typing = addTypingIndicator(
+      currentPersonaLabel(bullSelect),
+      currentPersonaLabel(bearSelect)
+    );
 
     try {
       const res = await fetch('/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: text, bull_preset: bullPreset, bear_preset: bearPreset }),
       });
 
       typing.remove();
@@ -382,6 +458,9 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Reset
+  // ---------------------------------------------------------------------------
   async function resetChat() {
     await fetch('/reset', { method: 'POST' });
     chat.innerHTML = '';
@@ -390,7 +469,8 @@
     welcome.className = 'welcome';
     welcome.innerHTML = `
       <h2>Your Investment Team</h2>
-      <p>Pitch any stock or investment idea. The Bull and Bear will debate it from opposite sides.</p>
+      <p>Pitch any stock or investment idea and your analysts will debate it.</p>
+      <p class="hint">Choose analyst personalities above before chatting.</p>
       <div class="tags">
         <span class="tag" onclick="prefill(this)">What do you think about NVIDIA?</span>
         <span class="tag" onclick="prefill(this)">Should I buy Apple at current prices?</span>
